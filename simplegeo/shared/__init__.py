@@ -220,6 +220,77 @@ class Feature:
         return json.dumps(self.to_dict())
 
 
+class Record:
+
+    def __init__(self, coordinates, layer, recordid, geomtype='Point',
+                 properties=None, strict_lon_validation=False):
+        """
+        In SimpleGeo Storage, a Record is a structure similar to a
+        database row for storing arbitrary data.
+
+        recordid is defined by the user and has to be unique within a layer
+        """
+        try:
+            deep_validate_lat_lon(coordinates, strict_lon_validation=strict_lon_validation)
+        except TypeError, le:
+            raise TypeError("The first argument, 'coordinates' is required to be a 2-element sequence of lon, lat for a point (or a more complicated set of coordinates for polygons or multipolygons), but it was %s :: %r. The error that was raised from validating this was: %s" % (type(coordinates), coordinates, le))
+
+        self.strict_lon_validation = strict_lon_validation
+        precondition(coordinates)
+        self.layer = layer
+        self.id = recordid
+        self.coordinates = coordinates
+        self.geomtype = geomtype
+        self.properties = {'private': False, 'layer': layer}
+        if properties:
+            self.properties.update(properties)
+
+    @classmethod
+    def from_dict(cls, data, strict_lon_validation=False):
+        """
+        data is a GeoJSON standard data structure, including that the
+        coordinates are in GeoJSON order (lon, lat) instead of
+        SimpleGeo order (lat, lon)
+        """
+        assert isinstance(data, dict), (type(data), repr(data))
+        coordinates = deep_swap(data['geometry']['coordinates'])
+        try:
+            deep_validate_lat_lon(coordinates, strict_lon_validation=strict_lon_validation)
+        except TypeError, le:
+            raise TypeError("The 'coordinates' value is required to be a 2-element sequence of lon, lat for a point (or a more complicated set of coordinates for polygons or multipolygons), but it was %s :: %r. The error that was raised from validating this was: %s" % (type(coordinates), coordinates, le))
+        feature = cls(
+            simplegeohandle = data.get('id'),
+            coordinates = coordinates,
+            geomtype = data['geometry']['type'],
+            properties = data.get('properties')
+            )
+
+        return feature
+
+    def to_dict(self):
+        """
+        Returns a GeoJSON object, including having its coordinates in
+        GeoJSON standad order (lon, lat) instead of SimpleGeo standard
+        order (lat, lon).
+        """
+        return {
+            'type': 'Feature',
+            'id': self.id,
+            'geometry': {
+                'type': self.geomtype,
+                'coordinates': deep_swap(self.coordinates)
+            },
+            'properties': copy.deepcopy(self.properties),
+        }
+
+    @classmethod
+    def from_json(cls, jsonstr):
+        return cls.from_dict(json_decode(jsonstr))
+
+    def to_json(self):
+        return json.dumps(self.to_dict())
+
+
 class Client(object):
     realm = "http://api.simplegeo.com"
     endpoints = {
